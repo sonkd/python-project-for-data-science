@@ -1,44 +1,128 @@
+# Import required libraries
 import pandas as pd
-import plotly.graph_objects as go
 import dash
-from dash import dcc
 from dash import html
+from dash import dcc
 from dash.dependencies import Input, Output
+import plotly.express as px
 
-airline_data =  pd.read_csv('https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-DV0101EN-SkillsNetwork/Data%20Files/airline_data.csv', 
-                            encoding = "ISO-8859-1",
-                            dtype={'Div1Airport': str, 'Div1TailNum': str, 
-                                   'Div2Airport': str, 'Div2TailNum': str})
+# Read the airline data into pandas dataframe
+spacex_df = pd.read_csv("spacex_launch_dash.csv")
+max_payload = spacex_df['Payload Mass (kg)'].max()
+min_payload = spacex_df['Payload Mass (kg)'].min()
 
-# Create a dash application layout
+launch_sites = spacex_df['Launch Site'].unique().tolist()
+site_options = [{'label': 'All Sites', 'value': 'ALL'}]
+for site in launch_sites:
+    site_options.append({'label': site, 'value': site})
+
+# Create a dash application
 app = dash.Dash(__name__)
 
-# Get the layout of the application and adjust it.
-# Create an outer division using html.Div and add title to the dashboard using html.H1 component
-# Add a html.Div and core input text component
-# Finally, add graph component.
-app.layout = html.Div(children=[ html.H1('Total number of flights to the destination state split by reporting airline',
-                            style={'textAlign': 'center', 'color': '#503D36', 'font-size': 40}),
-                            html.Div(["Input Year: ", dcc. Input(id='input-year',value='2010',
-                            type='number', style={'height':'50px', 'font-size': 35}),], 
-                            style={'font-size': 40}),html.Br(), html.Br(),
-                            html.Div(dcc.Graph(id='bar-plot')),])  
+# Create an app layout
+app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
+                                        style={'textAlign': 'center', 'color': '#503D36',
+                                               'font-size': 40}),
+                                # TASK 1: Add a dropdown list to enable Launch Site selection
+                                # The default select value is for ALL sites
+                                # dcc.Dropdown(id='site-dropdown',...)
+                                dcc.Dropdown(id='site-dropdown',
+                                    options = site_options,
+                                    value = 'ALL',
+                                    placeholder = "place holder here",
+                                    searchable = True
+                                ),
+                                html.Br(),
 
-# add callback decorator
-@app.callback( Output(component_id='bar-plot', component_property='figure'),
-               Input(component_id='input-year', component_property='value'))
+                                # TASK 2: Add a pie chart to show the total successful launches count for all sites
+                                # If a specific launch site was selected, show the Success vs. Failed counts for the site
+                                html.Div(dcc.Graph(id='success-pie-chart')),
+                                html.Br(),
 
-# Add computation to callback function and return graph
-def get_graph(entered_year):
-    # Select 2019 data
-    df =  airline_data[airline_data['Year']==int(entered_year)]
+                                html.P("Payload range (Kg):"),
+                                # TASK 3: Add a slider to select payload range
+                                #dcc.RangeSlider(id='payload-slider',...)
+                                dcc.RangeSlider(id='payload-slider',
+                                                min=0, max=10000, step=1000,
+                                                marks={0: '0',
+                                                       2500: '2500',
+                                                       5000: '5000',
+                                                       7500: '7500',
+                                                       10000: '10000'},
+                                                value=[min_payload, max_payload]
+                                ),
+
+                                # TASK 4: Add a scatter chart to show the correlation between payload and launch success
+                                html.Div(dcc.Graph(id='success-payload-scatter-chart')),
+                                ])
+
+# TASK 2:
+# Add a callback function for `site-dropdown` as input, `success-pie-chart` as output
+@app.callback(Output(component_id='success-pie-chart', component_property='figure'),
+               [Input(component_id='site-dropdown', component_property='value')])
+def get_pie_chart(entered_site):
+    # filtered_df = spacex_df.loc[(spacex_df['Launch Site']==entered_site), ['Launch Site', 'class']].groupby(by='class', as_index=False).count()
+    filtered_df = spacex_df.loc[spacex_df['Launch Site']==entered_site, ['Launch Site','class']].groupby('class').count().reset_index()    
+    if entered_site == 'ALL':
+        fig = px.pie(
+            spacex_df,
+            values='class', 
+            names= 'Launch Site', 
+            title = f'Total Success Launches by Site {entered_site}'
+        )
+        return fig
+    else:
+        # return the outcomes piechart for a selected site
+        fig = px.pie(
+            filtered_df, 
+            values='class', 
+            names='Launch Site', 
+            title = f'Total Success Launches by Site {entered_site}'
+        )
+        return fig
+
+# TASK 4:
+# Add a callback function for `site-dropdown` and `payload-slider` as inputs, `success-payload-scatter-chart` as output
+@app.callback(Output(component_id='success-payload-scatter-chart', component_property='figure'),
+               [Input(component_id='site-dropdown', component_property='value'), Input(component_id="payload-slider", component_property="value")])
+def get_scatter_plot(selected_site, payload_range):
+    low, high = payload_range
+    filtered_df = spacex_df[
+        (spacex_df['Payload Mass (kg)'] >= low) &
+        (spacex_df['Payload Mass (kg)'] <= high)
+    ]
     
-    # Group the data
-    bar_data = df.groupby('DestState')['Flights'].sum().reset_index()
-    fig = px.bar(bar_data, x= "DestState", y= "Flights", title='Total number of flights to the destination state split by reporting airline') 
-    fig.update_layout(title='Flights to Destination State', xaxis_title='DestState', yaxis_title='Flights')
-    return fig
+    if selected_site == 'ALL':
+        fig = px.scatter(
+            spacex_df,
+            x='Payload Mass (kg)', 
+            y='class',
+            color='Booster Version Category',
+            title=f'Payload vs Launch Outcome for {selected_site}',
+            hover_data=['Launch Site', 'Booster Version'],
+        )
+        fig.update_layout(
+            title=f'Payload vs Launch Outcome for {selected_site}',
+            xaxis_title='Payload Mass (kg)',
+            yaxis_title='Launch Outcome',
+        )
+        return fig
+    else:
+        fig = px.scatter(
+            filtered_df,
+            x='Payload Mass (kg)', 
+            y='class',
+            color='Booster Version Category',
+            title=f'Payload vs Launch Outcome for {selected_site}',
+            hover_data=['Launch Site', 'Booster Version'],
+        )
 
+        fig.update_layout(
+            title=f'Payload vs Launch Outcome for {selected_site}',
+            xaxis_title='Payload Mass (kg)',
+            yaxis_title='Launch Outcome',
+        )
+        return fig
 # Run the app
 if __name__ == '__main__':
     app.run()

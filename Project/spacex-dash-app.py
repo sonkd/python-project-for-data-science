@@ -45,7 +45,10 @@ app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
                                 dcc.RangeSlider(id='payload-slider',
                                                 min=0, max=10000, step=1000,
                                                 marks={0: '0',
-                                                        100: '100'},
+                                                       2500: '2500',
+                                                       5000: '5000',
+                                                       7500: '7500',
+                                                       10000: '10000'},
                                                 value=[min_payload, max_payload]
                                 ),
 
@@ -58,7 +61,7 @@ app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
 @app.callback(Output(component_id='success-pie-chart', component_property='figure'),
                [Input(component_id='site-dropdown', component_property='value')])
 def get_pie_chart(entered_site):
-    filtered_df = spacex_df[spacex_df['Launch Site'] == entered_site]['class'].sum().reset_index()().reset_index()    
+    filtered_df = spacex_df[spacex_df['Launch Site'] == entered_site].groupby('class').size().reset_index()    
     if entered_site == 'ALL':
         fig = px.pie(
             spacex_df,
@@ -102,6 +105,7 @@ def get_scatter_plot(selected_site, payload_range):
             xaxis_title='Payload Mass (kg)',
             yaxis_title='Launch Outcome',
         )
+        return fig
     else:
         fig = px.scatter(
             filtered_df,
@@ -117,7 +121,7 @@ def get_scatter_plot(selected_site, payload_range):
             xaxis_title='Payload Mass (kg)',
             yaxis_title='Launch Outcome',
         )
-    return fig
+        return fig
 # Run the app
 if __name__ == '__main__':
     app.run()
